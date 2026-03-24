@@ -65,7 +65,8 @@ JQL date functions you can use:
         "https://api.anthropic.com/v1/messages",
         headers=LLM_HEADERS,
         json={
-            "model"    : "claude-opus-4-6",
+            #"model"    : "claude-opus-4-6",
+            "model"    : os.environ["MODEL_NAME"],
             "max_tokens": 1000,
             "messages" : [{"role": "user", "content": prompt}]
         }
@@ -144,13 +145,32 @@ def interpret_results(user_question, plan, issues):
                         "changed_by": h["author"].get("displayName")
                     })
 
+        # Sprint: Jira Cloud uses customfield_10020 (list of sprint objects)
+        sprints = fields.get("customfield_10020") or fields.get("sprint") or []
+        if isinstance(sprints, dict):
+            sprints = [sprints]
+        sprint_names = [s.get("name") for s in sprints if isinstance(s, dict) and s.get("name")]
+
+        # Story points: customfield_10016 (Jira Cloud) or customfield_10028 or story_points
+        story_points = (
+            fields.get("story_points")
+            or fields.get("customfield_10016")
+            or fields.get("customfield_10028")
+        )
+
         trimmed.append({
-            "key"        : issue["key"],
-            "summary"    : fields.get("summary", ""),
-            "issuetype"  : fields.get("issuetype", {}).get("name"),
-            "status"     : fields.get("status", {}).get("name"),
-            "created"    : fields.get("created"),
-            "transitions": transitions
+            "key"             : issue["key"],
+            "summary"         : fields.get("summary", ""),
+            "issuetype"       : (fields.get("issuetype") or {}).get("name"),
+            "status"          : (fields.get("status") or {}).get("name"),
+            "priority"        : (fields.get("priority") or {}).get("name"),
+            "assignee"        : (fields.get("assignee") or {}).get("displayName"),
+            "reporter"        : (fields.get("reporter") or {}).get("displayName"),
+            "created"         : fields.get("created"),
+            "resolutiondate"  : fields.get("resolutiondate"),
+            "sprint"          : sprint_names[-1] if sprint_names else None,
+            "story_points"    : story_points,
+            "transitions"     : transitions,
         })
 
     prompt = f"""
