@@ -6,16 +6,38 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.rule import Rule
 from src.jira_analyser import ask
+from src.colors import ColorFormatter
 
 console = Console()
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
-    datefmt="%Y-%m-%dT%H:%M:%S",
-)
 
-BANNER = """
+def create_jw_banner(banner="Jira Whisperer", sub_text=""):
+    from pyfiglet import Figlet
+
+    f_small = Figlet(font="slant")  # more compact
+    console.print(f_small.renderText(banner))
+    console.print((sub_text))
+
+
+
+
+handler = logging.StreamHandler()
+handler.setFormatter(ColorFormatter(
+    fmt="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S",
+))
+logging.basicConfig(level=logging.INFO, handlers=[handler])
+
+BORDER_UP = """
+[bold yellow]╔═════════════════════════════════════════════════════════════════════════╗[/]\n
+"""
+
+
+
+BORDER_DWN = """
+[bold yellow]╚═════════════════════════════════════════════════════════════════════════╝[/]\n
+"""
+BANNER_1 = """
 [bold cyan]╔══════════════════════════════════════════════════════╗[/]
 [bold cyan]║[/]       [bold white]Jira Whisperer[/]  [yellow]✦[/]  [dim][/]        [bold cyan]║[/]
 [bold cyan]║[/]  Ask anything about your Jira project in plain    [bold cyan]║[/]
@@ -41,13 +63,16 @@ Commands:
 
 
 def repl():
-    console.print(BANNER)
+    console.print(BORDER_UP)
+    BANNER = create_jw_banner(banner="Jira Whisperer",
+                       sub_text="Ask anything about your Jira project in plain English\n")
+    console.print(BORDER_DWN)
 
     history: list[str] = []
 
     while True:
         try:
-            user_input = console.input("[bold cyan]❯[/] ").strip()
+            user_input = console.input("[bold cyan]\[jwhisper]#[/] ").strip()
         except (EOFError, KeyboardInterrupt):
             console.print("\n\n[dim]Goodbye.[/]")
             break
@@ -82,7 +107,9 @@ def repl():
         except KeyboardInterrupt:
             console.print("\n[dim][interrupted][/]")
         except Exception as e:
+            import traceback
             console.print(f"[bold red]Error:[/] {e}")
+            console.print(traceback.format_exc())
 
         console.print()
 

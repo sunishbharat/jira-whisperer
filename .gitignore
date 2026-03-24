@@ -8,6 +8,9 @@ wheels/
 
 # Virtual environments
 .venv
+
+# IDE
+.vscode/
 data
 *.local.*
 .env
