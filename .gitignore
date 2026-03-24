@@ -14,3 +14,7 @@ wheels/
 data
 *.local.*
 .env
+
+# Docs — exclude all .md except README.md
+*.md
+!README.md

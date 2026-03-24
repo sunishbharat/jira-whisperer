@@ -1,17 +1,17 @@
-import os
 import time
 import logging
 import requests
 import json
 from datetime import datetime
-from dotenv import load_dotenv
 from src.colors import C
-
-load_dotenv()
+from src import config
 
 logger = logging.getLogger(__name__)
 
-# ── Rate Limiters ─────────────────────────────────────────
+# ===========================================================
+# Rate Limiters
+# ===========================================================
+
 class RateLimiter:
     """Ensures a minimum interval between calls."""
     def __init__(self, min_interval: float):
@@ -25,30 +25,14 @@ class RateLimiter:
             time.sleep(wait)
         self._last_call = time.monotonic()
 
-jira_limiter = RateLimiter(min_interval=1.0)   # max 2 Jira requests/sec
-llm_limiter  = RateLimiter(min_interval=1.0)   # max 1 Anthropic request/sec
+jira_limiter = RateLimiter(min_interval=config.JIRA_MIN_INTERVAL)
+llm_limiter  = RateLimiter(min_interval=config.LLM_MIN_INTERVAL)
 
-# ── Jira Config ───────────────────────────────────────────
-JIRA_BASE_URL     = os.environ["JIRA_BASE_URL"]
-_jira_user        = os.environ.get("JIRA_USER", "")
-_jira_token       = os.environ.get("JIRA_API_TOKEN", "")
-AUTH              = (_jira_user, _jira_token) if _jira_user and _jira_token else None
-JIRA_HEADERS      = {"Accept": "application/json"}
-API               = f"{JIRA_BASE_URL}/rest/api/2"
-DEFAULT_PROJECT   = os.environ.get("JIRA_DEFAULT_PROJECT", "")
+# ===========================================================
+# Step 1: NLP -> API Plan
+# LLM reads the question and decides what API call to make.
+# ===========================================================
 
-# ── Anthropic Config ──────────────────────────────────────
-ANTHROPIC_KEY = os.environ["ANTHROPIC_API_KEY"]
-LLM_HEADERS   = {
-    "x-api-key"        : ANTHROPIC_KEY,
-    "anthropic-version": "2023-06-01",
-    "content-type"     : "application/json"
-}
-
-# ─────────────────────────────────────────────────────────
-# STEP 1 — NLP → API Plan
-# LLM reads the question and decides what API call to make
-# ─────────────────────────────────────────────────────────
 def generate_api_plan(user_question, projects: dict, fields: dict, _unused: dict = {}):
     today = datetime.now().strftime("%Y-%m-%d")
 
@@ -56,8 +40,8 @@ def generate_api_plan(user_question, projects: dict, fields: dict, _unused: dict
     fields_list   = "\n".join(f"  {k}: {v}" for k, v in fields.items())
 
     default_project_line = (
-        f"Default project: {DEFAULT_PROJECT} — use this in JQL when the user does not mention a specific project."
-        if DEFAULT_PROJECT else ""
+        f"Default project: {config.JIRA_DEFAULT_PROJECT} — use this in JQL when the user does not mention a specific project."
+        if config.JIRA_DEFAULT_PROJECT else ""
     )
 
     prompt = f"""
@@ -112,11 +96,10 @@ JQL constraints — strictly follow these:
 """
     llm_limiter.throttle()
     res = requests.post(
-        "https://api.anthropic.com/v1/messages",
-        headers=LLM_HEADERS,
+        config.ANTHROPIC_API_URL,
+        headers=config.ANTHROPIC_HEADERS,
         json={
-            #"model"    : "claude-opus-4-6",
-            "model"    : os.environ["MODEL_NAME"],
+            "model"    : config.ANTHROPIC_MODEL,
             "max_tokens": 1000,
             "messages" : [{"role": "user", "content": prompt}]
         }
@@ -126,16 +109,17 @@ JQL constraints — strictly follow these:
     clean = raw.replace("```json", "").replace("```", "").strip()
     return json.loads(clean)
 
-#########
-# Get all projects available
-#########
+# ===========================================================
+# Jira Metadata Helpers
+# ===========================================================
+
 def get_all_projects():
 
     jira_limiter.throttle()
     # Get all projects
     res = requests.get(
-        f"{JIRA_BASE_URL}/rest/api/2/project",
-        auth=AUTH, headers=JIRA_HEADERS
+        f"{config.JIRA_BASE_URL}/rest/api/2/project",
+        auth=config.JIRA_AUTH, headers=config.JIRA_HEADERS
     ).json()
 
     
@@ -148,16 +132,13 @@ def get_all_projects():
     return project_dict
 
 
-#########
-# Get all column fields available
-#########
 def get_all_fields():
 
     jira_limiter.throttle()
     # Get all projects
     fields = requests.get(
-        f"{JIRA_BASE_URL}/rest/api/2/field",
-        auth=AUTH, headers=JIRA_HEADERS
+        f"{config.JIRA_BASE_URL}/rest/api/2/field",
+        auth=config.JIRA_AUTH, headers=config.JIRA_HEADERS
     ).json()
 
     sys_fields = [field for field in fields if not field.get("custom") ]
@@ -180,9 +161,10 @@ def get_all_fields():
 
 
 
-# ─────────────────────────────────────────────────────────
-# STEP 2 — Execute the API Call
-# ─────────────────────────────────────────────────────────
+# ===========================================================
+# Step 2: Execute the Jira API Call
+# ===========================================================
+
 def execute_jira_api(plan):
     endpoint = plan["endpoint"]
     params   = plan.get("params", {})
@@ -196,7 +178,7 @@ def execute_jira_api(plan):
     if plan.get("needs_changelog"):
         params["expand"] = "changelog"
 
-    url     = f"{JIRA_BASE_URL}{endpoint}"
+    url     = f"{config.JIRA_BASE_URL}{endpoint}"
     issues  = []
     start   = 0
     retries = 0
@@ -205,7 +187,7 @@ def execute_jira_api(plan):
     while True:
         params["startAt"] = start
         jira_limiter.throttle()
-        response = requests.get(url, auth=AUTH, headers=JIRA_HEADERS, params=params)
+        response = requests.get(url, auth=config.JIRA_AUTH, headers=config.JIRA_HEADERS, params=params)
         logger.info("Jira request URL: %s", response.request.url)
 
         logger.info("Jira HTTP %s, content-type: %s", response.status_code, response.headers.get("content-type"))
@@ -249,9 +231,10 @@ def execute_jira_api(plan):
     return issues
 
 
-# ─────────────────────────────────────────────────────────
-# STEP 3 — LLM Interprets Results → Human Answer
-# ─────────────────────────────────────────────────────────
+# ===========================================================
+# Step 3: Interpret Results -> Human-Readable Answer
+# ===========================================================
+
 def interpret_results(user_question, plan, issues):
 
     # Trim data sent to LLM — avoid token overflow
@@ -319,8 +302,8 @@ Instructions:
 """
     llm_limiter.throttle()
     res = requests.post(
-        "https://api.anthropic.com/v1/messages",
-        headers=LLM_HEADERS,
+        config.ANTHROPIC_API_URL,
+        headers=config.ANTHROPIC_HEADERS,
         json={
             "model"    : "claude-opus-4-6",
             "max_tokens": 2000,
@@ -331,9 +314,10 @@ Instructions:
     return res["content"][0]["text"]
 
 
-# ─────────────────────────────────────────────────────────
-# MAIN — Wire it all together
-# ─────────────────────────────────────────────────────────
+# ===========================================================
+# Main Entry Point
+# ===========================================================
+
 def ask(question):
     logger.info("Question: %s", question)
 
@@ -343,8 +327,8 @@ def ask(question):
     sys_fields, custom_fields = get_all_fields()
 
     # Narrow to default project only
-    if DEFAULT_PROJECT and DEFAULT_PROJECT in all_projects:
-        projects = {DEFAULT_PROJECT: all_projects[DEFAULT_PROJECT]}
+    if config.JIRA_DEFAULT_PROJECT and config.JIRA_DEFAULT_PROJECT in all_projects:
+        projects = {config.JIRA_DEFAULT_PROJECT: all_projects[config.JIRA_DEFAULT_PROJECT]}
     else:
         projects = all_projects
 

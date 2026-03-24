@@ -1,7 +1,7 @@
 [project]
 name = "jira-whisperer"
 version = "0.1.0"
-description = "Add your description here"
+description = "AI-powered natural language interface for Jira — ask questions in plain English, get answers via JQL and the Jira REST API"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -11,3 +11,12 @@ dependencies = [
     "requests>=2.32.5",
     "rich>=13.0.0",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+pythonpath = ["."]
