@@ -1,111 +1,103 @@
 # Jira Whisperer
 
-> AI-powered natural language interface for Jira — ask questions in plain English, get answers via JQL and the Jira REST API.
 
-## What it does
+Tired of writing JQL just to find out what your team is working on? Jira Whisperer lets you talk to your Jira like a colleague — type a question the way you'd say it out loud, and get a clear answer back.
 
-You type a question in plain English. Jira Whisperer:
+No dashboards to configure. No filters to save. No JQL to learn.
 
-1. Translates it into a JQL query using Claude
-2. Fetches the matching issues from Jira REST API v2
-3. Interprets the results and returns a clean, human-readable answer
+> *"Show me all the bugs opened this quarter"*
+> *"Which issues spent more than 10 days in QA last sprint?"*
+> *"List everything assigned to john.doe that's still open"*
+
+Under the hood, an LLM (Anthropic Claude by default) converts your question into a JQL query, runs it against your Jira, and then reads the results back to you in plain English — like having a data analyst on call.
+
+
+
+<br>
+
+## Preview
+
+<img width="655" height="536" alt="image" src="https://github.com/user-attachments/assets/0ad7ba2e-2ac4-4f4f-ae59-c838b1fb609a" />
+
+
+<br>
+
+
+<br>
+
+## Requirements
+
+| Tool | Version |
+|------|---------|
+| Python | 3.12+ |
+| [uv](https://docs.astral.sh/uv/) | latest |
+| LLM API key | Anthropic by default; any OpenAI-compatible provider supported |
+| Jira Cloud or Server v9 | REST API v2 |
+
+<br>
+
+## Setup
+
+**1. Clone the repository**
+```bash
+git clone https://github.com/your-org/jira-whisperer.git
+cd jira-whisperer
+```
+
+**2. Install dependencies**
+```bash
+uv sync
+```
+
+**3. Configure environment**
+```bash
+cp .env.example .env
+# Edit .env with your credentials
+```
+
+**4. Run**
+```bash
+uv run python main.py
+```
+
+<br>
+
+## Usage
 
 ```
 [jwhisper]# Show all open bugs in project KAFKA created this quarter
 [jwhisper]# Find issues that spent more than 10 days in QA last sprint
 [jwhisper]# List unresolved blockers assigned to john.doe@company.com
+[jwhisper]# jw help       — show example queries
+[jwhisper]# jw history    — show question history
+[jwhisper]# jw quit       — exit
 ```
 
-## Requirements
-
-- Python >= 3.12
-- [uv](https://docs.astral.sh/uv/) package manager
-- Anthropic API key
-- Jira Cloud or Jira Server v9 (REST API v2)
-
-## Setup
-
-```bash
-# 1. Clone and install dependencies
-git clone https://github.com/your-org/jira-whisperer.git
-cd jira-whisperer
-uv sync
-
-# 2. Configure environment
-cp .env.example .env
-# Edit .env with your credentials
-```
+<br>
 
 ## Configuration
 
-Create a `.env` file in the project root:
-
-```env
-JIRA_BASE_URL=https://your-domain.atlassian.net   # No trailing slash
-JIRA_USER=your@email.com                           # Leave empty for public instances
-JIRA_API_TOKEN=your_api_token                      # Leave empty for public instances
-ANTHROPIC_API_KEY=sk-ant-...
-MODEL_NAME=claude-opus-4-6                         # Claude model to use
-JIRA_DEFAULT_PROJECT=MYAPP                         # Optional: default project scope
-```
+All settings are loaded from `.env` via `src/config.py`.
 
 | Variable | Required | Purpose |
-|---|---|---|
+|----------|----------|---------|
 | `JIRA_BASE_URL` | Yes | Jira base URL, no trailing slash |
-| `JIRA_USER` | No | Jira username / email (leave empty for public instances) |
-| `JIRA_API_TOKEN` | No | Jira API token (leave empty for public instances) |
-| `ANTHROPIC_API_KEY` | Yes | Anthropic API key |
-| `MODEL_NAME` | Yes | Claude model ID (e.g. `claude-opus-4-6`) |
-| `JIRA_DEFAULT_PROJECT` | No | Default project key used in JQL when none is specified |
+| `JIRA_USER` | No | Username / email (omit for public instances) |
+| `JIRA_API_TOKEN` | No | API token (omit for public instances) |
+| `ANTHROPIC_API_KEY` | Yes | LLM API key (Anthropic by default) |
+| `MODEL_NAME` | No | Model ID to use (default: `claude-opus-4-6`) |
+| `JIRA_DEFAULT_PROJECT` | No | Default project key used in JQL when none specified |
 
-## Running
+> Set `level=logging.DEBUG` in `main.py` to print the full Jira request URL on every call — paste it directly into a browser to verify the query manually.
+
+<br>
+
+## Running Tests
+
+Tests are integration tests that run against real APIs using credentials from `.env`.
 
 ```bash
-uv run python main.py
+uv run pytest test/test_pipeline -v -s
 ```
 
-You'll be dropped into an interactive REPL:
-
-```
-[jwhisper]# your question here
-[jwhisper]# jw help       # show example queries
-[jwhisper]# jw history    # show question history
-[jwhisper]# jw quit       # exit
-```
-
-## Architecture
-
-```
-User question
-     │
-     ▼
-generate_api_plan()   — Claude translates question → JQL + field selection
-     │
-     ▼
-execute_jira_api()    — Calls /rest/api/2/search, paginates results
-     │
-     ▼
-interpret_results()   — Claude formats issues → human-readable answer
-```
-
-### Key files
-
-| File | Purpose |
-|---|---|
-| `main.py` | REPL entry point, logging setup |
-| `src/jira_analyser.py` | Core pipeline: plan → fetch → interpret |
-| `src/colors.py` | ANSI color constants and `ColorFormatter` for logging |
-
-### Logging
-
-Set `level=logging.DEBUG` in `main.py` to see step-by-step trace output including the full Jira request URL (pasteable directly into a browser for manual verification).
-
-## Dependencies
-
-| Package | Purpose |
-|---|---|
-| `anthropic` | Anthropic SDK (declared, API called via `requests`) |
-| `requests` | HTTP client for Jira and Anthropic API calls |
-| `rich` | Terminal formatting and markdown rendering |
-| `pyfiglet` | ASCII banner |
-| `python-dotenv` | `.env` file loading |
+> `ANTHROPIC_API_KEY` (or your LLM provider's key) and `JIRA_BASE_URL` must be set before running tests.
