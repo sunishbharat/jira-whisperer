@@ -79,16 +79,48 @@ uv run python main.py
 
 All settings are loaded from `.env` via `src/config.py`.
 
+### Jira connection
+
 | Variable | Required | Purpose |
 |----------|----------|---------|
 | `JIRA_BASE_URL` | Yes | Jira base URL, no trailing slash |
 | `JIRA_USER` | No | Username / email (omit for public instances) |
 | `JIRA_API_TOKEN` | No | API token (omit for public instances) |
-| `ANTHROPIC_API_KEY` | Yes | LLM API key (Anthropic by default) |
-| `MODEL_NAME` | No | Model ID to use (default: `claude-opus-4-6`) |
 | `JIRA_DEFAULT_PROJECT` | No | Default project key used in JQL when none specified |
 
+### LLM provider
+
+Set `LLM_PROVIDER` to one of `anthropic` (default), `groq`, or `huggingface`, then supply the matching API key.
+
+**Anthropic (default)**
+```env
+LLM_PROVIDER=anthropic
+ANTHROPIC_API_KEY=sk-ant-...
+MODEL_NAME=claude-sonnet-4-6          # optional — default: claude-sonnet-4-6
+```
+
+**Groq** (fast, free tier available)
+```env
+LLM_PROVIDER=groq
+GROQ_API_KEY=gsk_...
+GROQ_MODEL=llama-3.3-70b-versatile    # optional — default: llama-3.3-70b-versatile
+```
+
+**HuggingFace Serverless Inference** (free tier available)
+```env
+LLM_PROVIDER=huggingface
+HF_API_KEY=hf_...
+HF_MODEL=Qwen/Qwen2.5-7B-Instruct     # optional — default: Qwen/Qwen2.5-7B-Instruct
+```
+
 > Set `level=logging.DEBUG` in `main.py` to print the full Jira request URL on every call — paste it directly into a browser to verify the query manually.
+
+<br>
+
+## Sample user query output
+
+![](./docs/sample_query_output.png)
+
 
 <br>
 

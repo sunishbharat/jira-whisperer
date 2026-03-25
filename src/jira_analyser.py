@@ -5,6 +5,7 @@ import json
 from datetime import datetime
 from src.colors import C
 from src import config
+from src import jira_config
 from src.jql_reference import JQL_REFERENCE
 
 logger = logging.getLogger(__name__)
@@ -26,7 +27,7 @@ class RateLimiter:
             time.sleep(wait)
         self._last_call = time.monotonic()
 
-jira_limiter = RateLimiter(min_interval=config.JIRA_MIN_INTERVAL)
+jira_limiter = RateLimiter(min_interval=jira_config.MIN_INTERVAL)
 llm_limiter  = RateLimiter(min_interval=config.LLM_MIN_INTERVAL)
 
 
@@ -129,8 +130,8 @@ def generate_api_plan(user_question, projects: dict, fields: dict, _unused: dict
     fields_list   = "\n".join(f"  {k}: {v}" for k, v in fields.items())
 
     default_project_line = (
-        f"Default project: {config.JIRA_DEFAULT_PROJECT} — use this in JQL when the user does not mention a specific project."
-        if config.JIRA_DEFAULT_PROJECT else ""
+        f"Default project: {jira_config.DEFAULT_PROJECT} — use this in JQL when the user does not mention a specific project."
+        if jira_config.DEFAULT_PROJECT else ""
     )
 
     prompt = f"""
@@ -212,8 +213,8 @@ def get_all_projects():
     jira_limiter.throttle()
     # Get all projects
     res = requests.get(
-        f"{config.JIRA_BASE_URL}/rest/api/2/project",
-        auth=config.JIRA_AUTH, headers=config.JIRA_HEADERS
+        f"{jira_config.BASE_URL}/rest/api/2/project",
+        auth=jira_config.AUTH, headers=jira_config.HEADERS
     ).json()
 
     
@@ -231,8 +232,8 @@ def get_all_fields():
     jira_limiter.throttle()
     # Get all projects
     fields = requests.get(
-        f"{config.JIRA_BASE_URL}/rest/api/2/field",
-        auth=config.JIRA_AUTH, headers=config.JIRA_HEADERS
+        f"{jira_config.BASE_URL}/rest/api/2/field",
+        auth=jira_config.AUTH, headers=jira_config.HEADERS
     ).json()
 
     sys_fields = [field for field in fields if not field.get("custom") ]
@@ -321,7 +322,7 @@ def execute_jira_api(plan):
     if plan.get("needs_changelog"):
         params["expand"] = "changelog"
 
-    url     = f"{config.JIRA_BASE_URL}{endpoint}"
+    url     = f"{jira_config.BASE_URL}{endpoint}"
     issues  = []
     start   = 0
     retries = 0
@@ -330,7 +331,7 @@ def execute_jira_api(plan):
     while True:
         params["startAt"] = start
         jira_limiter.throttle()
-        response = requests.get(url, auth=config.JIRA_AUTH, headers=config.JIRA_HEADERS, params=params)
+        response = requests.get(url, auth=jira_config.AUTH, headers=jira_config.HEADERS, params=params)
         logger.info("Jira request URL: %s", response.request.url)
 
         logger.info("Jira HTTP %s, content-type: %s", response.status_code, response.headers.get("content-type"))
@@ -381,18 +382,6 @@ def execute_jira_api(plan):
 # Avoids hardcoding IDs that differ across instances.
 # ===========================================================
 
-# Each key is a semantic name; values are known display-name
-# variants (lowercase) used across Jira Cloud / Server flavours.
-_SEMANTIC_FIELD_VARIANTS: dict[str, set[str]] = {
-    "sprint"      : {"sprint", "sprint name"},
-    "story_points": {"story points", "story point estimate",
-                     "story point", "sp", "story_points"},
-    "epic_link"   : {"epic link"},
-    "epic_name"   : {"epic name"},
-    "team"        : {"team", "squad"},
-}
-
-
 def resolve_custom_field_ids(custom_fields: dict) -> dict[str, str]:
     """
     Return a mapping of semantic name → field ID for this Jira instance.
@@ -403,7 +392,7 @@ def resolve_custom_field_ids(custom_fields: dict) -> dict[str, str]:
     Unrecognised fields are silently omitted so callers always get a safe dict.
     """
     resolved: dict[str, str] = {}
-    for semantic, variants in _SEMANTIC_FIELD_VARIANTS.items():
+    for semantic, variants in jira_config.CUSTOM_FIELD_VARIANTS.items():
         for field_id, display_name in custom_fields.items():
             if display_name.lower() in variants:
                 resolved[semantic] = field_id
@@ -526,8 +515,8 @@ def ask(question):
     sys_fields, custom_fields = get_all_fields()
 
     # Narrow to default project only
-    if config.JIRA_DEFAULT_PROJECT and config.JIRA_DEFAULT_PROJECT in all_projects:
-        projects = {config.JIRA_DEFAULT_PROJECT: all_projects[config.JIRA_DEFAULT_PROJECT]}
+    if jira_config.DEFAULT_PROJECT and jira_config.DEFAULT_PROJECT in all_projects:
+        projects = {jira_config.DEFAULT_PROJECT: all_projects[jira_config.DEFAULT_PROJECT]}
     else:
         projects = all_projects
 
@@ -535,15 +524,9 @@ def ask(question):
     resolved_fields = resolve_custom_field_ids(custom_fields)
     logger.info("Resolved custom fields: %s", resolved_fields)
 
-    # Keep only the 15 most commonly needed fields total
-    _CORE_SYS = {
-        "summary", "status", "assignee", "reporter", "created",
-        "updated", "resolutiondate", "issuetype", "priority",
-        "description", "fixVersions", "components", "labels",
-    }
     # Include any custom fields we resolved (sprint, story points, etc.)
     _useful_custom_ids = set(resolved_fields.values())
-    filtered_sys    = {k: v for k, v in sys_fields.items() if k in _CORE_SYS}
+    filtered_sys    = {k: v for k, v in sys_fields.items() if k in jira_config.CORE_FIELDS}
     filtered_custom = {k: v for k, v in custom_fields.items()
                        if k in _useful_custom_ids}
     # Cap total at 15
