@@ -40,71 +40,83 @@ llm_limiter  = RateLimiter(min_interval=config.LLM_MIN_INTERVAL)
 _token_usage: list[dict] = []
 
 
+def _call_huggingface(prompt: str, max_tokens: int) -> tuple[str, dict]:
+    res = requests.post(
+        config.HF_API_URL,
+        headers=config.HF_HEADERS,
+        json={
+            "model"     : config.HF_MODEL,
+            "messages"  : [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+        },
+    ).json()
+    if "choices" not in res:
+        error = res.get("error", res)
+        logger.error("HuggingFace API error: %s", error)
+        raise RuntimeError(f"HuggingFace API error: {error}")
+    usage = res.get("usage", {})
+    return res["choices"][0]["message"]["content"], {
+        "input" : usage.get("prompt_tokens", 0),
+        "output": usage.get("completion_tokens", 0),
+    }
+
+
+def _call_groq(prompt: str, max_tokens: int) -> tuple[str, dict]:
+    res = requests.post(
+        config.GROQ_API_URL,
+        headers=config.GROQ_HEADERS,
+        json={
+            "model"     : config.GROQ_MODEL,
+            "messages"  : [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+        },
+    ).json()
+    if "choices" not in res:
+        error = res.get("error", res)
+        logger.error("Groq API error: %s", error)
+        raise RuntimeError(f"Groq API error: {error}")
+    usage = res.get("usage", {})
+    return res["choices"][0]["message"]["content"], {
+        "input" : usage.get("prompt_tokens", 0),
+        "output": usage.get("completion_tokens", 0),
+    }
+
+
+def _call_anthropic(prompt: str, max_tokens: int) -> tuple[str, dict]:
+    res = requests.post(
+        config.ANTHROPIC_API_URL,
+        headers=config.ANTHROPIC_HEADERS,
+        json={
+            "model"     : config.ANTHROPIC_MODEL,
+            "max_tokens": max_tokens,
+            "messages"  : [{"role": "user", "content": prompt}],
+        },
+    ).json()
+    if "content" not in res:
+        error = res.get("error", res)
+        logger.error("Anthropic API error: %s", error)
+        raise RuntimeError(f"Anthropic API error: {error}")
+    usage = res.get("usage", {})
+    return res["content"][0]["text"], {
+        "input" : usage.get("input_tokens", 0),
+        "output": usage.get("output_tokens", 0),
+    }
+
+
+_LLM_DISPATCH = {
+    "huggingface": _call_huggingface,
+    "groq"       : _call_groq,
+    "anthropic"  : _call_anthropic,
+}
+
+
 def call_llm(prompt: str, max_tokens: int, call_label: str = "llm") -> str:
     llm_limiter.throttle()
-    if config.LLM_PROVIDER == "huggingface":
-        res = requests.post(
-            config.HF_API_URL,
-            headers=config.HF_HEADERS,
-            json={
-                "model"     : config.HF_MODEL,
-                "messages"  : [{"role": "user", "content": prompt}],
-                "max_tokens": max_tokens,
-            },
-        ).json()
-        if "choices" not in res:
-            error = res.get("error", res)
-            logger.error("HuggingFace API error: %s", error)
-            raise RuntimeError(f"HuggingFace API error: {error}")
-        usage = res.get("usage", {})
-        _token_usage.append({
-            "call"  : call_label,
-            "input" : usage.get("prompt_tokens", 0),
-            "output": usage.get("completion_tokens", 0),
-        })
-        return res["choices"][0]["message"]["content"]
-    elif config.LLM_PROVIDER == "groq":
-        res = requests.post(
-            config.GROQ_API_URL,
-            headers=config.GROQ_HEADERS,
-            json={
-                "model"     : config.GROQ_MODEL,
-                "messages"  : [{"role": "user", "content": prompt}],
-                "max_tokens": max_tokens,
-            },
-        ).json()
-        if "choices" not in res:
-            error = res.get("error", res)
-            logger.error("Groq API error: %s", error)
-            raise RuntimeError(f"Groq API error: {error}")
-        usage = res.get("usage", {})
-        _token_usage.append({
-            "call"  : call_label,
-            "input" : usage.get("prompt_tokens", 0),
-            "output": usage.get("completion_tokens", 0),
-        })
-        return res["choices"][0]["message"]["content"]
-    else:
-        res = requests.post(
-            config.ANTHROPIC_API_URL,
-            headers=config.ANTHROPIC_HEADERS,
-            json={
-                "model"     : config.ANTHROPIC_MODEL,
-                "max_tokens": max_tokens,
-                "messages"  : [{"role": "user", "content": prompt}],
-            },
-        ).json()
-        if "content" not in res:
-            error = res.get("error", res)
-            logger.error("Anthropic API error: %s", error)
-            raise RuntimeError(f"Anthropic API error: {error}")
-        usage = res.get("usage", {})
-        _token_usage.append({
-            "call"  : call_label,
-            "input" : usage.get("input_tokens", 0),
-            "output": usage.get("output_tokens", 0),
-        })
-        return res["content"][0]["text"]
+    provider = config.LLM_PROVIDER
+    fn = _LLM_DISPATCH.get(provider, _call_anthropic)
+    text, usage = fn(prompt, max_tokens)
+    _token_usage.append({"call": call_label, **usage})
+    return text
 
 
 def get_token_summary() -> dict:
