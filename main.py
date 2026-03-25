@@ -109,7 +109,7 @@ def repl():
             console.print("\n[dim]Goodbye.[/]")
             break
 
-        if user_input.lower() in ("jw help", "jw ?"):
+        if user_input.lower() in ("jw help", "jw ?", "?"):
             console.print(Markdown(HELP))
             continue
 
