@@ -35,12 +35,12 @@ class TestPipeline:
 
     def test_ask_returns_non_empty_string(self):
         """ask() must return a non-empty string for any valid question."""
-        answer = ask("list 3 issues in project KAFKA with priority Major")
+        answer, _ = ask("list 3 issues in project KAFKA with priority Major")
         assert isinstance(answer, str), "Answer must be a string"
         assert len(answer) > 0, "Answer must not be empty"
 
     def test_ask_with_status_filter(self):
         """ask() must handle status filters without raising an exception."""
-        answer = ask("list 3 open issues in project KAFKA")
+        answer, _ = ask("list 3 open issues in project KAFKA")
         assert isinstance(answer, str)
         assert len(answer) > 0
