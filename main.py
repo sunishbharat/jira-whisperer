@@ -85,6 +85,8 @@ def repl():
     console.print(BORDER_UP)
     if config.LLM_PROVIDER == "anthropic":
         provider_info = f"anthropic  /  {config.ANTHROPIC_MODEL}"
+    elif config.LLM_PROVIDER == "groq":
+        provider_info = f"groq  /  {config.GROQ_MODEL}"
     else:
         provider_info = f"huggingface  /  {config.HF_MODEL}"
     BANNER = create_jw_banner(

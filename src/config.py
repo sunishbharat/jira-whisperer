@@ -27,7 +27,7 @@ JIRA_AUTH   = (_jira_user, _jira_token) if _jira_user and _jira_token else None
 
 
 # ===========================================================
-# LLM Provider — set LLM_PROVIDER to "anthropic" or "huggingface"
+# LLM Provider — set LLM_PROVIDER to "anthropic", "huggingface", or "groq"
 # ===========================================================
 
 # Reads LLM_PROVIDER from .env; defaults to "anthropic" only if not set
@@ -54,10 +54,21 @@ HF_HEADERS = {
     "Content-Type" : "application/json",
 }
 
+# --- Groq ---
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+GROQ_MODEL   = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_HEADERS = {
+    "Authorization": f"Bearer {GROQ_API_KEY}",
+    "Content-Type" : "application/json",
+}
+
 if LLM_PROVIDER == "anthropic" and not ANTHROPIC_API_KEY:
     raise KeyError("ANTHROPIC_API_KEY is required when LLM_PROVIDER=anthropic")
 if LLM_PROVIDER == "huggingface" and not HF_API_KEY:
     raise KeyError("HF_API_KEY is required when LLM_PROVIDER=huggingface")
+if LLM_PROVIDER == "groq" and not GROQ_API_KEY:
+    raise KeyError("GROQ_API_KEY is required when LLM_PROVIDER=groq")
 
 
 # ===========================================================

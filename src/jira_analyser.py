@@ -32,7 +32,7 @@ llm_limiter  = RateLimiter(min_interval=config.LLM_MIN_INTERVAL)
 
 # ===========================================================
 # LLM Abstraction
-# Dispatches to Anthropic or HuggingFace based on config.
+# Dispatches to Anthropic, HuggingFace, or Groq based on config.
 # ===========================================================
 
 # Per-run token accumulator — reset at the start of each ask()
@@ -55,6 +55,27 @@ def call_llm(prompt: str, max_tokens: int, call_label: str = "llm") -> str:
             error = res.get("error", res)
             logger.error("HuggingFace API error: %s", error)
             raise RuntimeError(f"HuggingFace API error: {error}")
+        usage = res.get("usage", {})
+        _token_usage.append({
+            "call"  : call_label,
+            "input" : usage.get("prompt_tokens", 0),
+            "output": usage.get("completion_tokens", 0),
+        })
+        return res["choices"][0]["message"]["content"]
+    elif config.LLM_PROVIDER == "groq":
+        res = requests.post(
+            config.GROQ_API_URL,
+            headers=config.GROQ_HEADERS,
+            json={
+                "model"     : config.GROQ_MODEL,
+                "messages"  : [{"role": "user", "content": prompt}],
+                "max_tokens": max_tokens,
+            },
+        ).json()
+        if "choices" not in res:
+            error = res.get("error", res)
+            logger.error("Groq API error: %s", error)
+            raise RuntimeError(f"Groq API error: {error}")
         usage = res.get("usage", {})
         _token_usage.append({
             "call"  : call_label,
