@@ -17,7 +17,7 @@ Under the hood, an LLM (Anthropic Claude by default) converts your question into
 
 ## Preview
 
-<img width="655" height="536" alt="image" src="https://github.com/user-attachments/assets/0ad7ba2e-2ac4-4f4f-ae59-c838b1fb609a" />
+![](./docs/jw_startup.png)
 
 
 <br>
